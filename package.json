@@ -7,10 +7,10 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@line/bot-sdk": "^7.8.0",
-    "@supabase/supabase-js": "^2.39.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "googleapis": "^134.0.0"
+    "@line/bot-sdk": "latest",
+    "@supabase/supabase-js": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "googleapis": "latest"
   }
 }
