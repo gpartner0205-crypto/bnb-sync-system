@@ -31,9 +31,9 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
   try {
     console.log(`\n⏳ 開始處理 ${guestName} 的訂房手續...`);
 
-    // 改用抓取全部房間並在記憶體比對，避免 .single() 嚴格限制導致找不到
+    // 注意：這裡改成了 bms_rooms，對應我們剛剛建立的資料表名稱
     const { data: rooms, error: roomError } = await supabase
-      .from('rooms')
+      .from('bms_rooms')
       .select('id, room_name');
 
     if (roomError) {
@@ -91,13 +91,16 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
   }
 }
 
-// 執行測試訂房
-addBooking({
-  guestName: '陳小明',
-  guestPhone: '0912345678',
-  roomName: '101 雙人房',
-  checkIn: '2026-08-15',
-  checkOut: '2026-08-17',
-  totalPrice: 4000,
-  source: '官方LINE'
-});
+// 提示：如果在正式雲端服務上部署，通常會搭配 Express 等網頁伺服器持續監聽請求，
+// 而不是直接在背景執行完一次就結束。若要測試，可以暫時保留這段：
+if (process.env.NODE_ENV !== 'production') {
+  addBooking({
+    guestName: '陳小明',
+    guestPhone: '0912345678',
+    roomName: '101 雙人房',
+    checkIn: '2026-08-15',
+    checkOut: '2026-08-17',
+    totalPrice: 4000,
+    source: '官方LINE'
+  });
+}
