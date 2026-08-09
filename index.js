@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const * as line = require('@line/bot-sdk');
+const line = require('@line/bot-sdk');
 const { createClient } = require('@supabase/supabase-js');
 const { google } = require('googleapis');
 
@@ -170,7 +170,7 @@ async function handleEvent(event) {
   });
 }
 
-// 8. 啟動伺服器監聽 Port（滿足 Render 背景服務要求）
+// 8. 啟動伺服器監聽 Port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 伺服器已啟動，正在監聽 Port ${PORT}`);
