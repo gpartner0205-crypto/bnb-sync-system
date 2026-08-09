@@ -26,7 +26,7 @@ const auth = new google.auth.GoogleAuth({
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
-// 4. LINE 機器人設定（使用最新版 SDK 寫法）
+// 4. LINE 機器人設定
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
@@ -56,13 +56,12 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
     const room = rooms.find(r => r.room_name.trim() === roomName.trim());
 
     if (!room) {
-      console.log('目前資料庫裡的房間列表：', rooms.map(r => `"${r.room_name}"`));
       throw new Error(`找不到房間：${roomName}，請確認資料庫已有該房間名稱。`);
     }
 
     console.log('📅 正在同步至 Google 日曆...');
     const event = {
-      summary: `[訂房] ${guestName} - ${roomName}`,
+      summary: `[訂房] ${guestName} -${roomName}`,
       description: `顧客姓名: ${guestName}\n電話: ${guestPhone}\n房型: ${roomName}\n總金額: $${totalPrice}\n來源: ${source}`,
       start: { date: checkIn },
       end: { date: checkOut },
@@ -74,7 +73,6 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
     });
 
     const googleEventId = gRes.data.id;
-    console.log(`✅ Google 日曆同步成功！Event ID: ${googleEventId}`);
 
     console.log('💾 正在寫入 Supabase 資料庫...');
     const { data: booking, error: bookingError } = await supabase
@@ -95,7 +93,6 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
 
       if (bookingError) throw bookingError;
 
-      console.log('🎉 訂房完成且已同步資料庫與 Google 日曆！');
       return { success: true, booking: booking[0] };
 
   } catch (err) {
@@ -123,7 +120,55 @@ async function handleEvent(event) {
 
   const userText = event.message.text.trim();
 
-  // 測試指令範例：「訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000」
+  // 關房指令：關房 [房型] [開始日期] [結束日期]
+  // 範例：「關房 101 雙人房 2026-08-15 2026-08-17」
+  if (userText.startsWith('關房')) {
+    const parts = userText.split(' ');
+    
+    if (parts.length < 5) {
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+          type: 'text',
+          text: '格式錯誤！指定日期關房請依照以下格式：\n關房 [房型] [開始日期] [結束日期]\n例如：關房 101 雙人房 2026-08-15 2026-08-17'
+        }]
+      });
+    }
+
+    const roomName = `${parts[1]}${parts[2]}`; // 例如 "101 雙人房"
+    const startDate = parts[3];
+    const endDate = parts[4];
+
+    try {
+      // 在 Google 日曆建立一個「[關房/保留]」的行程，直接擋掉這幾天
+      const event = {
+        summary: `[關房/保留] ${roomName}`,
+        description: `管理者手動關閉此時段，不開放預訂。`,
+        start: { date: startDate },
+        end: { date: endDate },
+      };
+
+      await calendar.events.insert({
+        calendarId: process.env.GOOGLE_CALENDAR_ID,
+        resource: event,
+      });
+
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+          type: 'text',
+          text: `🔒 已成功將【${roomName}】於 ${startDate} 至${endDate} 設為關房狀態，已同步至 Google 日曆！`
+        }]
+      });
+    } catch (err) {
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: `❌ 關房失敗：${err.message}` }]
+      });
+    }
+  }
+
+  // 訂房指令範例：「訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000」
   if (userText.startsWith('訂房')) {
     const parts = userText.split(' ');
     
@@ -139,12 +184,11 @@ async function handleEvent(event) {
 
     const guestName = parts[1];
     const guestPhone = parts[2];
-    const roomName = `${parts[3]} ${parts[4]}`; // 組合「101 雙人房」
+    const roomName = `${parts[3]}${parts[4]}`;
     const checkIn = parts[5];
     const checkOut = parts[6];
     const totalPrice = parseInt(parts[7], 10);
 
-    // 執行訂房程序
     const result = await addBooking({
       guestName,
       guestPhone,
@@ -160,7 +204,7 @@ async function handleEvent(event) {
         replyToken: event.replyToken,
         messages: [{
           type: 'text',
-          text: `✅ 訂房成功！\n客人：${guestName}\n房型：${roomName}\n入住：${checkIn} ~ ${checkOut}\n已同步至 Google 日曆與資料庫。`
+          text: `✅ 訂房成功！\n客人：${guestName}\n房型：${roomName}\n入住：${checkIn} ~${checkOut}\n已同步至 Google 日曆與資料庫。`
         }]
       });
     } else {
@@ -179,7 +223,7 @@ async function handleEvent(event) {
     replyToken: event.replyToken,
     messages: [{
       type: 'text',
-      text: `您傳送的是：「${userText}」。\n如需訂房請輸入「訂房 姓名 電話 房型 入住日 退房日 金額」`
+      text: `您傳送的是：「${userText}」。\n- 訂房格式：訂房 姓名 電話 房型 入住日 退房日 金額\n- 關房格式：關房 房型 開始日 結束日`
     }]
   });
 }
