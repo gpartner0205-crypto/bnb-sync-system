@@ -26,12 +26,14 @@ const auth = new google.auth.GoogleAuth({
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
-// 4. LINE 機器人設定
+// 4. LINE 機器人設定（使用最新版 SDK 寫法）
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-const lineClient = new line.Client(lineConfig);
+const lineClient = new line.messagingApi.MessagingApiClient({
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+});
 
 // 5. 初始化 Express 伺服器
 const app = express();
@@ -126,9 +128,12 @@ async function handleEvent(event) {
     const parts = userText.split(' ');
     
     if (parts.length < 8) {
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: '格式錯誤！請依照以下格式輸入：\n訂房 [姓名] [電話] [房型] [入住日] [退房日] [金額]\n例如：訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000'
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+          type: 'text',
+          text: '格式錯誤！請依照以下格式輸入：\n訂房 [姓名] [電話] [房型] [入住日] [退房日] [金額]\n例如：訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000'
+        }]
       });
     }
 
@@ -151,22 +156,31 @@ async function handleEvent(event) {
     });
 
     if (result.success) {
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `✅ 訂房成功！\n客人：${guestName}\n房型：${roomName}\n入住：${checkIn} ~ ${checkOut}\n已同步至 Google 日曆與資料庫。`
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+          type: 'text',
+          text: `✅ 訂房成功！\n客人：${guestName}\n房型：${roomName}\n入住：${checkIn} ~ ${checkOut}\n已同步至 Google 日曆與資料庫。`
+        }]
       });
     } else {
-      return lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `❌ 訂房失敗：${result.error}`
+      return lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{
+          type: 'text',
+          text: `❌ 訂房失敗：${result.error}`
+        }]
       });
     }
   }
 
   // 一般對話回覆
-  return lineClient.replyMessage(event.replyToken, {
-    type: 'text',
-    text: `您傳送的是：「${userText}」。\n如需訂房請輸入「訂房 姓名 電話 房型 入住日 退房日 金額」`
+  return lineClient.replyMessage({
+    replyToken: event.replyToken,
+    messages: [{
+      type: 'text',
+      text: `您傳送的是：「${userText}」。\n如需訂房請輸入「訂房 姓名 電話 房型 入住日 退房日 金額」`
+    }]
   });
 }
 
