@@ -1,13 +1,16 @@
 {
   "name": "bnb-sync-system",
   "version": "1.0.0",
+  "description": "B&B Booking Management Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.0.0",
-    "dotenv": "^16.0.0",
-    "googleapis": "^126.0.0"
+    "@line/bot-sdk": "^7.8.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^134.0.0"
   }
 }
