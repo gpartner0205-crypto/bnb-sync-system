@@ -31,13 +31,20 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
   try {
     console.log(`\n⏳ 開始處理 ${guestName} 的訂房手續...`);
 
-    const { data: room, error: roomError } = await supabase
+    // 改用抓取全部房間並在記憶體比對，避免 .single() 嚴格限制導致找不到
+    const { data: rooms, error: roomError } = await supabase
       .from('rooms')
-      .select('id')
-      .eq('room_name', roomName)
-      .single();
+      .select('id, room_name');
 
-    if (roomError || !room) {
+    if (roomError) {
+      throw new Error(`讀取房間資料庫失敗: ${roomError.message}`);
+    }
+
+    // 比對名稱（清除前後空白）
+    const room = rooms.find(r => r.room_name.trim() === roomName.trim());
+
+    if (!room) {
+      console.log('目前資料庫裡的房間列表：', rooms.map(r => `"${r.room_name}"`));
       throw new Error(`找不到房間：${roomName}，請確認資料庫已有該房間名稱。`);
     }
 
