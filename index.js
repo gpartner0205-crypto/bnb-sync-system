@@ -1,4 +1,6 @@
 require('dotenv').config();
+const express = require('express');
+const * as line = require('@line/bot-sdk');
 const { createClient } = require('@supabase/supabase-js');
 const { google } = require('googleapis');
 
@@ -24,14 +26,23 @@ const auth = new google.auth.GoogleAuth({
 });
 const calendar = google.calendar({ version: 'v3', auth });
 
+// 4. LINE 機器人設定
+const lineConfig = {
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
+};
+const lineClient = new line.Client(lineConfig);
+
+// 5. 初始化 Express 伺服器
+const app = express();
+
 /**
- * 新增訂房並同步至 Google 日曆
+ * 核心：新增訂房並同步至 Google 日曆與 Supabase
  */
-async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, totalPrice, source = 'Direct' }) {
+async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, totalPrice, source = '官方LINE' }) {
   try {
     console.log(`\n⏳ 開始處理 ${guestName} 的訂房手續...`);
 
-    // 注意：這裡正確對應到我們建立的 bms_rooms 資料表
     const { data: rooms, error: roomError } = await supabase
       .from('bms_rooms')
       .select('id, room_name');
@@ -40,7 +51,6 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
       throw new Error(`讀取房間資料庫失敗: ${roomError.message}`);
     }
 
-    // 比對名稱（清除前後空白）
     const room = rooms.find(r => r.room_name.trim() === roomName.trim());
 
     if (!room) {
@@ -81,32 +91,87 @@ async function addBooking({ guestName, guestPhone, roomName, checkIn, checkOut, 
       ])
       .select();
 
-    if (bookingError) throw bookingError;
+      if (bookingError) throw bookingError;
 
-    console.log('🎉 訂房完成且已同步資料庫與 Google 日曆！');
-    console.log('訂房資料：', booking[0]);
+      console.log('🎉 訂房完成且已同步資料庫與 Google 日曆！');
+      return { success: true, booking: booking[0] };
 
   } catch (err) {
     console.error('❌ 處理訂房失敗：', err.message);
+    return { success: false, error: err.message };
   }
 }
 
-// 執行測試訂房
-async function run() {
-  await addBooking({
-    guestName: '陳小明',
-    guestPhone: '0912345678',
-    roomName: '101 雙人房',
-    checkIn: '2026-08-15',
-    checkOut: '2026-08-17',
-    totalPrice: 4000,
-    source: '官方LINE'
-  });
+// 6. LINE Webhook 接收路由
+app.post('/webhook', line.middleware(lineConfig), (req, res) => {
+  Promise
+    .all(req.body.events.map(handleEvent))
+    .then((result) => res.json(result))
+    .catch((err) => {
+      console.error(err);
+      res.status(500).end();
+    });
+});
 
-  console.log('✨ 測試執行完畢，保持常駐中，避免雲端主機判定異常關閉...');
-  
-  // 使用無限期計時器讓 Node.js 不要退出，滿足 Render 雲端背景服務的要求
-  setInterval(() => {}, 1000 * 60 * 60);
+// 7. 處理 LINE 傳進來的訊息事件
+async function handleEvent(event) {
+  if (event.type !== 'message' || event.message.type !== 'text') {
+    return Promise.resolve(null);
+  }
+
+  const userText = event.message.text.trim();
+
+  // 測試指令範例：「訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000」
+  if (userText.startsWith('訂房')) {
+    const parts = userText.split(' ');
+    
+    if (parts.length < 8) {
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '格式錯誤！請依照以下格式輸入：\n訂房 [姓名] [電話] [房型] [入住日] [退房日] [金額]\n例如：訂房 陳小明 0912345678 101 雙人房 2026-08-15 2026-08-17 4000'
+      });
+    }
+
+    const guestName = parts[1];
+    const guestPhone = parts[2];
+    const roomName = `${parts[3]} ${parts[4]}`; // 組合「101 雙人房」
+    const checkIn = parts[5];
+    const checkOut = parts[6];
+    const totalPrice = parseInt(parts[7], 10);
+
+    // 執行訂房程序
+    const result = await addBooking({
+      guestName,
+      guestPhone,
+      roomName,
+      checkIn,
+      checkOut,
+      totalPrice,
+      source: '官方LINE'
+    });
+
+    if (result.success) {
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `✅ 訂房成功！\n客人：${guestName}\n房型：${roomName}\n入住：${checkIn} ~ ${checkOut}\n已同步至 Google 日曆與資料庫。`
+      });
+    } else {
+      return lineClient.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `❌ 訂房失敗：${result.error}`
+      });
+    }
+  }
+
+  // 一般對話回覆
+  return lineClient.replyMessage(event.replyToken, {
+    type: 'text',
+    text: `您傳送的是：「${userText}」。\n如需訂房請輸入「訂房 姓名 電話 房型 入住日 退房日 金額」`
+  });
 }
 
-run();
+// 8. 啟動伺服器監聽 Port（滿足 Render 背景服務要求）
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 伺服器已啟動，正在監聽 Port ${PORT}`);
+});
