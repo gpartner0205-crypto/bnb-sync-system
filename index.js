@@ -172,6 +172,10 @@ async function handleEvent(event) {
 
 // 8. 啟動伺服器監聽 Port
 const PORT = process.env.PORT || 3000;
+// 讓 UptimeRobot 訪問根網址時回傳 200 成功，防止誤判跟休眠
+app.get('/', (req, res) => {
+  res.status(200).send('B&B Bot is running successfully!');
+});
 app.listen(PORT, () => {
   console.log(`🚀 伺服器已啟動，正在監聽 Port ${PORT}`);
 });
